@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- 背景 -->
+    <path
+        android:fillColor="#6366F1"
+        android:pathData="M0,0h48v48H0z" />
+    <!-- 日历图标 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,10h24c1.1,0 2,0.9 2,2v24c0,1.1 -0.9,2 -2,2H12c-1.1,0 -2,-0.9 -2,-2V12c0,-1.1 0.9,-2 2,-2z" />
+    <path
+        android:fillColor="#6366F1"
+        android:pathData="M12,10h24c1.1,0 2,0.9 2,2v4H10v-4c0,-1.1 0.9,-2 2,-2z" />
+    <!-- 日历线条 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M16,8v4M32,8v4"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF" />
+    <!-- 网格 -->
+    <path
+        android:fillColor="#6366F1"
+        android:pathData="M18,22h12M18,26h12M18,30h12M24,18v16M30,18v16" />
+</vector>
