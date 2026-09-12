@@ -24,3 +24,12 @@ Thumbs.db
 /captures
 .externalNativeBuild
 .cxx
+
+# Kotlin 增量编译会话
+.kotlin/
+
+# 真机调试与界面验证产物
+# 设备截图 / UI 转储可能包含个人课表（课程名、教师、教室），严禁提交
+build_verify/
+/captures/
+*.uiautomator.xml
