@@ -63,7 +63,7 @@ fun RecognitionScreen(
     var targetWeek by remember { mutableIntStateOf(viewModel.currentWeek.value.coerceAtLeast(1)) }
     var showImportConfirm by remember { mutableStateOf(false) }
 
-    // 从 txt 文件读取教务 response（粘贴框放不下大文本时使用）
+    // 从 txt 文件读取课表 JSON（粘贴框放不下大文本时使用）
     val appContext = LocalContext.current
     val scope = rememberCoroutineScope()
     var fileLoading by remember { mutableStateOf(false) }
@@ -214,7 +214,7 @@ fun RecognitionScreen(
                         )
                     } else {
                         Text(
-                            text = "粘贴整学期课表（含 data.AdjustDays 与各课程完整周次），一次清空当前课表并写入整个学期。",
+                            text = "粘贴整学期课表 JSON（含各课程完整周次），一次清空当前课表并写入整个学期。",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp
                         )
@@ -326,9 +326,9 @@ fun RecognitionScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = if (importMode == ImportMode.WEEK_SNAPSHOT)
-                            "把教务系统里【第 $targetWeek 周】的课表 response（含 data.AdjustDays）存成 .txt 用右上角导入；短文本也可直接粘贴到下面。"
+                            "把教务系统里【第 $targetWeek 周】的课表 JSON 存成 .txt 用右上角导入；短文本也可直接粘贴到下面。"
                         else
-                            "把整学期课表 response（含 data.AdjustDays）存成 .txt 用右上角导入；短文本也可直接粘贴到下面。",
+                            "把整学期课表 JSON 存成 .txt 用右上角导入；短文本也可直接粘贴到下面。",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp
                     )
@@ -345,7 +345,7 @@ fun RecognitionScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(220.dp),
-                        placeholder = { Text("{\n  \"data\": {\n    \"AdjustDays\": [...]\n  }\n}") },
+                        placeholder = { Text("{\n  \"data\": {\n    \"days\": [ ... ]\n  }\n}") },
                         textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
                         singleLine = false
                     )

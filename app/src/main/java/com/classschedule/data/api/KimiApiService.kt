@@ -92,20 +92,24 @@ object KimiApiClient {
     }
 
     /**
-     * 构建“把教务整学期课表 JSON 转成标准课次列表”的纯文本请求
+     * 构建“把课表 JSON 转成标准课次列表”的纯文本请求。
+     *
+     * 提示词刻意**不假设任何具体学校的 JSON 结构**：字段名、层级、周次写法
+     * 都由模型自行从用户给出的原始 JSON 中推断，因此对任意学校 / 任意教务系统通用。
      */
     fun buildTimetableParseRequest(rawJson: String, model: String): KimiRequest {
         val system = """
-你是一个课程表数据整理助手。用户会给出一份某高校教务系统返回的“整学期个人课表”JSON。请把它整理成统一的课次列表，只输出 JSON，不要任何解释或 Markdown 代码块之外的文字。
+你是一个课程表数据整理助手。用户会给出一份“个人课表”JSON（来自某高校教务系统，各校字段命名与层级差异很大）。请先自行推断其结构，再整理成统一的课次列表。只输出 JSON，不要任何解释或 Markdown 代码块之外的文字。
 
-原始 JSON 结构要点：
-- data.AdjustDays 是数组，长度7，索引 0=周一 … 6=周日，每个元素含 AM__TimePieces / PM__TimePieces / EV__TimePieces（有时还有 MN/AF，都是时间段数组）。
-- 每个时间段(TimePiece)含 StartSection/EndSection（连续节次区间）、StartTime/EndTime、Dtos(课程数组)。
-- 每个 Dto 的 Content 是数组，其中含 {Key: "Lesson"|"Teacher"|"Room"|"Time", Name: ...}：Lesson=课程名、Teacher=教师、Room=教室、Time=周次与节次（如 "1-8,10-17周[1-2节][单周]"）。
-- Time 字段的周次可能有多个区间（如 1-8,10-17）也可能带 [单周]/[双周]。
+结构推断要点（不要假设固定字段名，一切以用户实际给的 JSON 为准）：
+- 找到承载“按星期划分的课表”的那部分，通常是一个长度 7 的数组（索引 0=周一 … 6=周日），但也可能是带 dayOfWeek / 星期 字段的对象数组，或按周次分组的嵌套结构。
+- 时间可能被拆成多个“时间段/节次块”，每块含起止节次与起止时间；也可能每门课自带节次字段。
+- 课程名、教师、教室可能是独立字段，也可能藏在形如 [{Key:"xxx", Name:"yyy"}] 的键值对数组里（此时按 Key 的语义判断是课程名/教师/教室/时间）。
+- 周次常见写法："1-16周"、"1-8,10-17周"、"第1-16周"、"1-16周(单)"、"[单周]/[双周]"、"奇/偶" 等；节次常见 "第1-2节"、"[3-4节]"。
+- 若同一门课同时出现多个周次区间或单双周，请拆成多条；同一门课同一时段重复出现只保留一条。
 
 输出要求：
-逐条输出每个在 Content 里带 Lesson 的课程课次；同一门课若 Time 含多个周次区间或单双周拆分，请拆成多条。每条对象字段：
+逐条输出你能识别出的每一个课次。每条对象字段：
 {
   "name": 课程名,
   "room": 教室,
@@ -113,12 +117,12 @@ object KimiApiClient {
   "day_of_week": 1到7(1=周一),
   "start_period": 开始节次,
   "end_period": 结束节次,
-  "weeks": "把该条对应的 Time 字段原文(周次与单双周部分)原样复制，例如 1-8周[单周] 或 10-17周。含节次也保留也可",
+  "weeks": "该条的周次与单双周原文（保留原写法即可，如 1-8周[单周] 或 10-17周）",
   "week_start": 该条起始周(整数),
   "week_end": 该条结束周(整数),
   "week_parity": 0或1或2(0=每周,1=单周,2=双周)
 }
-请把 weeks 原文放进去（这是我解析周次的依据），week_start/week_end/week_parity 作为辅助。若 Time 字段缺失，可在 week_start/week_end 填 1、最大可见周次，week_parity=0。若同一门课同一时段在多个时间段里重复出现(如整周实践课全天占用)，只需输出一次。
+请务必把 weeks 原文填进去（这是解析周次的依据），week_start/week_end/week_parity 作为辅助。若周次信息确实缺失，可在 week_start/week_end 填 1 与最大可见周次、week_parity=0。
 返回形如 {"courses":[...]}。
         """.trimIndent()
 
