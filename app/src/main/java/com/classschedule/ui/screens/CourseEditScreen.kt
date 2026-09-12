@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +17,11 @@ import androidx.compose.ui.unit.sp
 import com.classschedule.data.model.Course
 import com.classschedule.data.model.CourseColors
 import com.classschedule.ui.components.*
+import com.classschedule.ui.glass.GlassDialog
+import com.classschedule.ui.glass.GlassDialogBody
+import com.classschedule.ui.glass.GlassDialogTitle
+import com.classschedule.ui.glass.GlassDropdownItem
+import com.classschedule.ui.glass.GlassDropdownMenu
 import com.classschedule.ui.viewmodel.MainViewModel
 import com.classschedule.ui.viewmodel.getDayName
 
@@ -63,7 +69,7 @@ fun CourseEditScreen(
         ) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
                 }
                 Text(text = if (isEditing) "编辑课程" else "添加课程", color = MaterialTheme.colorScheme.onBackground, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
@@ -164,7 +170,7 @@ fun CourseEditScreen(
     }
 
     if (showDeleteDialog) {
-        AlertDialog(
+        GlassDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("确认删除") },
             text = { Text("确定要删除课程「$name」吗？") },
@@ -228,9 +234,9 @@ private fun PeriodDropdown(label: String, selectedPeriod: Int, maxPeriod: Int, o
                 Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        GlassDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             (1..maxPeriod).forEach { period ->
-                DropdownMenuItem(text = { Text("第${period}节") }, onClick = { onSelected(period); expanded = false })
+                GlassDropdownItem(text = "第${period}节", onClick = { onSelected(period); expanded = false })
             }
         }
     }
@@ -246,9 +252,9 @@ private fun WeekDropdown(label: String, selectedWeek: Int, onSelected: (Int) -> 
                 Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        GlassDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             (1..30).forEach { week ->
-                DropdownMenuItem(text = { Text("第${week}周") }, onClick = { onSelected(week); expanded = false })
+                GlassDropdownItem(text = "第${week}周", onClick = { onSelected(week); expanded = false })
             }
         }
     }

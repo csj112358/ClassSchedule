@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,6 +16,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.classschedule.data.model.PeriodConfig
 import com.classschedule.ui.components.*
+import com.classschedule.ui.glass.GlassDialog
+import com.classschedule.ui.glass.GlassDialogBody
+import com.classschedule.ui.glass.GlassDialogTitle
 import com.classschedule.ui.viewmodel.MainViewModel
 
 @Composable
@@ -30,7 +34,7 @@ fun PeriodConfigScreen(
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
                 }
                 Text(text = "课时配置", color = MaterialTheme.colorScheme.onBackground, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
@@ -108,7 +112,7 @@ private fun PeriodConfigItem(config: PeriodConfig, onEdit: () -> Unit, onDelete:
     }
 
     if (showDeleteDialog) {
-        AlertDialog(
+        GlassDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("确认删除") },
             text = { Text("确定要删除第 ${config.period} 节吗？") },
@@ -133,7 +137,7 @@ private fun PeriodEditDialog(
     var endTime by remember { mutableStateOf(initialEnd) }
     var label by remember { mutableStateOf(initialLabel) }
 
-    AlertDialog(
+    GlassDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {

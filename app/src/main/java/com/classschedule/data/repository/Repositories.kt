@@ -92,3 +92,24 @@ class PeriodConfigRepository @Inject constructor(
     suspend fun getCount(): Int = periodConfigDao.getCount()
 }
 
+/**
+ * API配置仓库
+ */
+@Singleton
+class ApiConfigRepository @Inject constructor(
+    private val apiConfigDao: ApiConfigDao
+) {
+    fun getAllApiConfigs(): Flow<List<ApiConfig>> = apiConfigDao.getAllApiConfigs()
+
+    fun getActiveApiConfig(): Flow<ApiConfig?> = apiConfigDao.getActiveApiConfig()
+
+    suspend fun getApiConfigById(id: Long): ApiConfig? = apiConfigDao.getApiConfigById(id)
+
+    suspend fun insert(config: ApiConfig): Long = apiConfigDao.insert(config)
+
+    suspend fun update(config: ApiConfig) = apiConfigDao.update(config)
+
+    suspend fun delete(config: ApiConfig) = apiConfigDao.delete(config)
+
+    suspend fun setActiveConfig(id: Long) = apiConfigDao.setActiveConfig(id)
+}

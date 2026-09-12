@@ -11,7 +11,7 @@ data class ParsedOccurrence(
     val name: String,
     val room: String,
     val teacher: String,
-    val dayOfWeek: Int,        // 1=周一 … 7=周日
+    val dayOfWeek: Int,        // 1-7
     val startPeriod: Int,      // 开始节次
     val endPeriod: Int,        // 结束节次
     val weekStart: Int,
@@ -20,156 +20,347 @@ data class ParsedOccurrence(
 )
 
 /**
- * 解析一份教务课表 JSON 的最终结果。
+ * 解析一份教务整学期课表 JSON 的最终结果
  */
 data class TimetableParseResult(
     val occurrences: List<ParsedOccurrence>,
-    val sectionTimes: Map<Int, Pair<String, String>>, // 节次 -> (开始时间, 结束时间)，可为空
+    val sectionTimes: Map<Int, Pair<String, String>>, // 节次 -> (开始时间, 结束时间)
     val maxWeek: Int,
     val distinctCourseCount: Int
 )
 
 /**
- * 教务课表 JSON 解析器 —— 学校格式适配模板。
+ * 教务系统整学期课表 JSON 解析器。
  *
- * ⚠️ 本文件是「空白模板」，**不内置任何具体学校的课表格式**。
- * 直接运行会在导入页提示「尚未适配你学校的课表格式」。
- * 你需要根据自己学校教务系统返回的 JSON 结构，按下面 3 步填好解析逻辑即可：
+ * 结构：data.AdjustDays[7]（周一~周日）-> 各 AM/PM/EV__TimePieces ->
+ * 每个 TimePiece(连续节次区间 + 起止时间) -> Dtos 课程 ->
+ * Content[{Key: Lesson/Teacher/Room/Time, Name:...}]。
  *
- *   第 1 步：拿到课表 JSON，理清结构（周几 / 课程名 / 教师 / 教室 / 节次 / 周次 / 单双周）
- *   第 2 步：在下方「一、原始 JSON 结构」处定义与之一一对应的数据类
- *   第 3 步：在「二、解析入口」的 parse() 里把字段映射成课次（用 makeOccurrence()）
- *
- * 详细说明见 README「学校适配说明」。
+ * 该结构是固定可枚举的，因此用本地代码解析（不依赖 AI），解析规则见项目内对齐文档。
  */
 object SemesterJsonParser {
 
     private val gson = Gson()
 
-    // =====================================================================
-    // 一、原始 JSON 结构（TODO：替换成你学校的字段）
-    // =====================================================================
-    //
-    // 用 Gson 数据类映射你学校教务返回的 JSON。Gson 默认按字段名匹配；
-    // 若字段名与 JSON 里的不一致，用
-    // @com.google.gson.annotations.SerializedName("实际字段名") 标注。
-    //
-    // 例如你学校返回的是这样的结构（仅示意，请按实际替换）：
-    //   { "data": { "courses": [ ... ] } }
-    //
-    // 那么你可以这样定义（把注释去掉、改成真实字段）：
-    //
-    //   private data class RawSchedule(
-    //       val data: RawData? = null
-    //   )
-    //
-    //   private data class RawData(
-    //       val courses: List<RawCourse>? = null   // TODO: 改成你学校的字段名
-    //   )
-    //
-    //   private data class RawCourse(
-    //       val name: String? = null,       // 课程名
-    //       val teacher: String? = null,    // 教师
-    //       val room: String? = null,       // 教室
-    //       val day: Int? = null,           // 星期几（1=周一）
-    //       val section: String? = null,    // 节次
-    //       val weeks: String? = null       // 周次
-    //   )
+    /** 默认学期周数上界（时间字符串里没给周次时的兜底） */
+    private const val DEFAULT_MAX_WEEK = 25
 
-    // =====================================================================
-    // 二、解析入口（TODO：在这里实现你学校的解析逻辑）
-    // =====================================================================
+    // ===== 教务原始 JSON 结构 =====
 
-    /**
-     * 完整解析一份课表 JSON。
-     *
-     * 典型实现流程：
-     *   1. 用 [fromJson] 把原文反序列化成你在「一」里定义的数据类；
-     *   2. 遍历每一天 / 每一门课，提取出通用字段；
-     *   3. 对每一条课次调用 [makeOccurrence] 生成 ParsedOccurrence 并收集；
-     *   4. （可选）把「节次 -> 上课时间」收集进 sectionTimes，用于自动补齐课时配置；
-     *   5. 用 [TimetableParseResult] 打包返回。
-     *
-     * 解析不出课程时抛出 IllegalArgumentException（消息会显示在导入页）。
-     */
-    fun parse(rawText: String): TimetableParseResult {
-        // TODO: 删除下面这行，替换成你自己的解析实现。
-        throw UnsupportedOperationException(
-            "尚未适配你学校的课表格式。请参考 README「学校适配说明」与本文件里的 TODO 注释，" +
-                "在 SemesterJsonParser.parse() 里填入你学校教务 JSON 的解析逻辑。"
-        )
-
-        // 下面是一个「实现示例」骨架，供参考（请按你学校结构改写，别直接照抄）：
-        //   val schedule = fromJson(rawText, RawSchedule::class.java)
-        //       ?: throw IllegalArgumentException("无法解析 JSON")
-        //   val courses = schedule.data?.courses
-        //       ?: throw IllegalArgumentException("缺少 data.courses")
-        //
-        //   val occurrences = mutableListOf<ParsedOccurrence>()
-        //   for (c in courses) {
-        //       // ... 在这里解析周次、节次、单双周等，得到 weekStart/weekEnd/weekParity ...
-        //       occurrences += makeOccurrence(
-        //           dayOfWeek = c.day ?: 0,
-        //           name = c.name ?: "",
-        //           room = c.room ?: "",
-        //           teacher = c.teacher ?: "",
-        //           startPeriod = 1,
-        //           endPeriod = 2,
-        //           weekStart = 1,
-        //           weekEnd = 16
-        //       )
-        //   }
-        //   if (occurrences.isEmpty()) throw IllegalArgumentException("没有提取到课程")
-        //
-        //   return TimetableParseResult(
-        //       occurrences = occurrences,
-        //       sectionTimes = emptyMap(),  // 或按需收集节次时间
-        //       maxWeek = occurrences.maxOf { it.weekEnd },
-        //       distinctCourseCount = occurrences.map { it.name }.distinct().size
-        //   )
-    }
-
-    // =====================================================================
-    // 三、通用工具（一般无需修改）
-    // =====================================================================
-
-    /**
-     * 把原文反序列化成你定义的数据类。
-     * 例如：val schedule = fromJson(rawText, RawSchedule::class.java)
-     */
-    fun <T> fromJson(rawText: String, clazz: Class<T>): T? = try {
-        gson.fromJson(rawText.trim(), clazz)
-    } catch (e: JsonSyntaxException) {
-        null
-    }
-
-    /**
-     * 生成一条课次。参数都是通用字段，你只需把 JSON 里解析出的值传进来。
-     * 若同一门课有多个周次区间（如 1-8 周 + 10-17 周），拆成多条分别调用。
-     */
-    fun makeOccurrence(
-        dayOfWeek: Int,
-        name: String,
-        room: String = "",
-        teacher: String = "",
-        startPeriod: Int,
-        endPeriod: Int,
-        weekStart: Int,
-        weekEnd: Int,
-        weekParity: Int = 0
-    ): ParsedOccurrence = ParsedOccurrence(
-        name = name,
-        room = room,
-        teacher = teacher,
-        dayOfWeek = dayOfWeek,
-        startPeriod = startPeriod,
-        endPeriod = endPeriod,
-        weekStart = weekStart,
-        weekEnd = weekEnd,
-        weekParity = weekParity
+    private data class RawSchedule(
+        val state: Int? = null,
+        val message: String? = null,
+        val data: RawData? = null
     )
 
-    /** 把单双周整数转成可读文本（供预览展示用） */
+    private data class RawData(
+        val AdjustDays: List<RawDay>? = null
+    )
+
+    private data class RawDay(
+        val WIndex: Int? = null,
+        val FullTitle: String? = null,
+        val MN__TimePieces: List<RawTimePiece>? = null,
+        val AM__TimePieces: List<RawTimePiece>? = null,
+        val AF__TimePieces: List<RawTimePiece>? = null,
+        val PM__TimePieces: List<RawTimePiece>? = null,
+        val EV__TimePieces: List<RawTimePiece>? = null
+    )
+
+    private data class RawTimePiece(
+        val Dtos: List<RawDto>? = null,
+        val StartTime: String? = null,
+        val EndTime: String? = null,
+        val Title: String? = null,
+        val StartSection: Int? = null,
+        val EndSection: Int? = null,
+        val Section: String? = null,
+        val IsTimeConflit: Boolean? = null
+    )
+
+    private data class RawDto(
+        val Content: List<RawContentItem>? = null
+    )
+
+    private data class RawContentItem(
+        val Key: String? = null,
+        val Name: String? = null
+    )
+
+    // ===== 公开入口 =====
+
+    /**
+     * 完整解析整学期课表 JSON。
+     * @throws IllegalArgumentException 无法识别为教务课表 JSON 时抛出
+     */
+    fun parse(rawText: String): TimetableParseResult {
+        val schedule = parseRaw(rawText)
+        val days = schedule?.data?.AdjustDays
+        if (days.isNullOrEmpty()) {
+            throw IllegalArgumentException("无法识别为教务课表JSON（缺少 data.AdjustDays）")
+        }
+
+        val dayKeys = listOf(
+            "MN__TimePieces", "AM__TimePieces", "AF__TimePieces", "PM__TimePieces", "EV__TimePieces"
+        )
+
+        val occurrences = LinkedHashSet<ParsedOccurrence>()
+
+        for ((index, day) in days.withIndex()) {
+            // 优先用 WIndex；缺失时按 AdjustDays 顺序兜底（索引0=周一）
+            val weekday = day.WIndex ?: (index + 1)
+            if (weekday !in 1..7) continue
+            val pieces = dayKeys.flatMap { key ->
+                when (key) {
+                    "MN__TimePieces" -> day.MN__TimePieces.orEmpty()
+                    "AM__TimePieces" -> day.AM__TimePieces.orEmpty()
+                    "AF__TimePieces" -> day.AF__TimePieces.orEmpty()
+                    "PM__TimePieces" -> day.PM__TimePieces.orEmpty()
+                    else -> day.EV__TimePieces.orEmpty()
+                }
+            }
+            for (piece in pieces) {
+                val fallbackStart = piece.StartSection ?: 1
+                val fallbackEnd = piece.EndSection ?: fallbackStart
+                for (dto in piece.Dtos.orEmpty()) {
+                    val content = dto.Content.orEmpty()
+                    val contentMap = content.associate { (it.Key ?: "") to (it.Name ?: "") }
+                    val name = contentMap["Lesson"] ?: ""
+                    if (name.isBlank()) continue
+                    val room = contentMap["Room"] ?: ""
+                    val teacher = contentMap["Teacher"] ?: ""
+                    val timeStr = contentMap["Time"]
+
+                    val (sp, ep) = parsePeriods(timeStr, fallbackStart, fallbackEnd)
+                    if (sp <= 0 || ep < sp) continue
+
+                    toOccurrences(
+                        dayOfWeek = weekday,
+                        name = name,
+                        room = room,
+                        teacher = teacher,
+                        startPeriod = sp,
+                        endPeriod = ep,
+                        timeText = timeStr
+                    ).forEach { occurrences.add(it) }
+                }
+            }
+        }
+        if (occurrences.isEmpty()) {
+            throw IllegalArgumentException("解析完成但没有提取到任何课程，请检查内容是否为完整课表JSON")
+        }
+
+        val sectionTimes = collectSectionTimes(days, dayKeys)
+        val maxWeek = occurrences.maxOf { it.weekEnd }
+        val distinctCount = occurrences.map { it.name }.distinct().size
+
+        return TimetableParseResult(
+            occurrences = occurrences.toList(),
+            sectionTimes = sectionTimes,
+            maxWeek = maxWeek,
+            distinctCourseCount = distinctCount
+        )
+    }
+
+    /**
+     * 仅提取“节次 -> 真实时间”映射，用于自动补齐课时配置。
+     * 解析失败时返回空 Map，不影响课程导入。
+     */
+    fun extractSectionTimes(rawText: String): Map<Int, Pair<String, String>> {
+        return try {
+            val schedule = parseRaw(rawText)
+            val days = schedule?.data?.AdjustDays ?: return emptyMap()
+            collectSectionTimes(days, listOf(
+                "MN__TimePieces", "AM__TimePieces", "AF__TimePieces", "PM__TimePieces", "EV__TimePieces"
+            ))
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    // ===== 内部实现 =====
+
+    private fun parseRaw(rawText: String): RawSchedule? {
+        return try {
+            gson.fromJson(rawText.trim(), RawSchedule::class.java)
+        } catch (e: JsonSyntaxException) {
+            null
+        }
+    }
+
+    private fun allPieces(days: List<RawDay>, dayKeys: List<String>): List<RawTimePiece> {
+        return days.flatMap { day ->
+            dayKeys.flatMap { key ->
+                when (key) {
+                    "MN__TimePieces" -> day.MN__TimePieces.orEmpty()
+                    "AM__TimePieces" -> day.AM__TimePieces.orEmpty()
+                    "AF__TimePieces" -> day.AF__TimePieces.orEmpty()
+                    "PM__TimePieces" -> day.PM__TimePieces.orEmpty()
+                    else -> day.EV__TimePieces.orEmpty()
+                }
+            }
+        }
+    }
+
+    /**
+     * 每个连续节次区间 TimePiece 的 StartTime/EndTime 只覆盖整段（如 3-5节 = 10:10-12:20），
+     * 这里把整段时间在其包含的各节之间等分，得到每节一个近似时间。
+     */
+    private fun collectSectionTimes(days: List<RawDay>, dayKeys: List<String>): Map<Int, Pair<String, String>> {
+        val result = LinkedHashMap<Int, Pair<String, String>>()
+        for (piece in allPieces(days, dayKeys)) {
+            val startSection = piece.StartSection ?: continue
+            val endSection = piece.EndSection ?: continue
+            val startTime = piece.StartTime ?: continue
+            val endTime = piece.EndTime ?: continue
+            val startMin = toMinutes(startTime) ?: continue
+            val endMin = toMinutes(endTime) ?: continue
+            if (endMin <= startMin) continue
+            val count = endSection - startSection + 1
+            if (count <= 0) continue
+
+            val total = endMin - startMin
+            val per = total / count
+            val rem = total % count
+            var cursor = startMin
+            for (k in 0 until count) {
+                val len = per + if (k < rem) 1 else 0
+                val segStart = cursor
+                cursor += len
+                val segEnd = cursor
+                val section = startSection + k
+                result[section] = minutesToTime(segStart) to minutesToTime(segEnd)
+            }
+        }
+        return result
+    }
+
+    private fun toMinutes(time: String): Int? {
+        val parts = time.split(":")
+        if (parts.size != 2) return null
+        val h = parts[0].toIntOrNull() ?: return null
+        val m = parts[1].toIntOrNull() ?: return null
+        return h * 60 + m
+    }
+
+    private fun minutesToTime(total: Int): String {
+        val h = (total / 60).coerceIn(0, 23)
+        val m = total % 60
+        return String.format(java.util.Locale.US, "%02d:%02d", h, m)
+    }
+
+    /**
+     * 把一条课次记录展开成“连续周次区间”的若干条 ParsedOccurrence。
+     * @param timeText Time 字段原文，如 "1-8,10-17周[1-2节][单周]"
+     */
+    fun toOccurrences(
+        dayOfWeek: Int,
+        name: String,
+        room: String,
+        teacher: String,
+        startPeriod: Int,
+        endPeriod: Int,
+        timeText: String?,
+        fallbackWeekStart: Int? = null,
+        fallbackWeekEnd: Int? = null,
+        fallbackParity: Int = 0
+    ): List<ParsedOccurrence> {
+        val (weeks, parity) = interpretTime(timeText)
+        val weekSet = if (weeks != null) weeks else {
+            if (fallbackWeekStart != null && fallbackWeekEnd != null) {
+                (fallbackWeekStart..fallbackWeekEnd).filter { w ->
+                    fallbackParity == 0 || w % 2 == (if (fallbackParity == 1) 1 else 0)
+                }.toSet()
+            } else {
+                emptySet()
+            }
+        }
+        if (weekSet.isEmpty()) return emptyList()
+        val usedParity = if (weeks != null) parity else fallbackParity
+
+        return collapseWeeks(weekSet, usedParity).map { (ws, we) ->
+            ParsedOccurrence(
+                name = name,
+                room = room,
+                teacher = teacher,
+                dayOfWeek = dayOfWeek,
+                startPeriod = startPeriod,
+                endPeriod = endPeriod,
+                weekStart = ws,
+                weekEnd = we,
+                weekParity = usedParity
+            )
+        }
+    }
+
+    private fun parsePeriods(timeText: String?, fallbackStart: Int, fallbackEnd: Int): Pair<Int, Int> {
+        if (timeText != null) {
+            val bracket = Regex("""[\[（(]\s*第?\s*(\d+)\s*[-~～]\s*(\d+)\s*节?[\]）)]""").find(timeText)
+            if (bracket != null) {
+                val a = bracket.groupValues[1].toIntOrNull() ?: fallbackStart
+                val b = bracket.groupValues[2].toIntOrNull() ?: fallbackEnd
+                return a to b
+            }
+        }
+        return fallbackStart to fallbackEnd
+    }
+
+    /**
+     * 解析 Time 字段：返回 (上课周集合, 单双周标记)。无法识别周次时 weeks 为 null。
+     */
+    private fun interpretTime(timeText: String?): Pair<Set<Int>?, Int> {
+        if (timeText.isNullOrBlank()) return null to 0
+        val text = timeText
+        val parity = when {
+            text.contains("单周") -> 1
+            text.contains("双周") -> 2
+            else -> 0
+        }
+
+        // 周次部分：形如 "1-8,10-17周"，兼容中文/英文逗号，兼容"第X-Y周"
+        val weekPart = Regex("""第?((?:\d+(?:-\d+)?)(?:[，,、]\s*\d+(?:-\d+)?)*)\s*周""").find(text)
+            ?.groupValues?.get(1)
+        if (weekPart == null) return null to parity
+
+        val weeks = mutableSetOf<Int>()
+        for (seg in weekPart.split(Regex("""[，,、]"""))) {
+            val m = Regex("""(\d+)(?:-\s*(\d+))?""").find(seg.trim()) ?: continue
+            val a = m.groupValues[1].toIntOrNull() ?: continue
+            val b = m.groupValues[2].takeIf { it.isNotBlank() }?.toIntOrNull() ?: a
+            for (w in a..b) {
+                if (parity == 0 || w % 2 == (if (parity == 1) 1 else 0)) weeks.add(w)
+            }
+        }
+        if (weeks.isEmpty()) return null to parity
+        return weeks to parity
+    }
+
+    /**
+     * 把上课周集合压缩为连续区间。
+     * 单双周时相邻合法周差 2（如 1,3,5,7 合并为 1-7[单周]）；否则按连续整数合并。
+     */
+    private fun collapseWeeks(weeks: Set<Int>, parity: Int): List<Pair<Int, Int>> {
+        val sorted = weeks.sorted()
+        if (sorted.isEmpty()) return emptyList()
+        val step = if (parity != 0) 2 else 1
+        val ranges = mutableListOf<Pair<Int, Int>>()
+        var start = sorted[0]
+        var prev = sorted[0]
+        for (i in 1 until sorted.size) {
+            val cur = sorted[i]
+            if (cur - prev == step) {
+                prev = cur
+            } else {
+                ranges.add(start to prev)
+                start = cur
+                prev = cur
+            }
+        }
+        ranges.add(start to prev)
+        return ranges
+    }
+
+    /** 工具：供 UI 预览等地方把单双周整数转成可读文本 */
     fun parityText(parity: Int): String = when (parity) {
         1 -> "单周"
         2 -> "双周"

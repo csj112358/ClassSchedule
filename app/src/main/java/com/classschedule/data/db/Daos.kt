@@ -48,6 +48,10 @@ interface CourseDao {
     @Query("SELECT * FROM courses WHERE semesterId = :semesterId ORDER BY dayOfWeek, startPeriod")
     fun getCoursesBySemester(semesterId: Long): Flow<List<Course>>
 
+    /** 一次性取出整学期课程（小部件 / 提醒调度等非响应式场景使用） */
+    @Query("SELECT * FROM courses WHERE semesterId = :semesterId ORDER BY dayOfWeek, startPeriod")
+    suspend fun getCoursesBySemesterList(semesterId: Long): List<Course>
+
     @Query("SELECT * FROM courses WHERE semesterId = :semesterId AND dayOfWeek = :dayOfWeek ORDER BY startPeriod")
     fun getCoursesByDay(semesterId: Long, dayOfWeek: Int): Flow<List<Course>>
 
@@ -129,4 +133,40 @@ interface PeriodConfigDao {
 
     @Query("SELECT COUNT(*) FROM period_configs")
     suspend fun getCount(): Int
+}
+
+/**
+ * API配置DAO
+ */
+@Dao
+interface ApiConfigDao {
+    @Query("SELECT * FROM api_configs ORDER BY id DESC")
+    fun getAllApiConfigs(): Flow<List<ApiConfig>>
+
+    @Query("SELECT * FROM api_configs WHERE isActive = 1 LIMIT 1")
+    fun getActiveApiConfig(): Flow<ApiConfig?>
+
+    @Query("SELECT * FROM api_configs WHERE id = :id")
+    suspend fun getApiConfigById(id: Long): ApiConfig?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(config: ApiConfig): Long
+
+    @Update
+    suspend fun update(config: ApiConfig)
+
+    @Delete
+    suspend fun delete(config: ApiConfig)
+
+    @Query("UPDATE api_configs SET isActive = 0")
+    suspend fun deactivateAll()
+
+    @Query("UPDATE api_configs SET isActive = 1 WHERE id = :id")
+    suspend fun activate(id: Long)
+
+    @Transaction
+    suspend fun setActiveConfig(id: Long) {
+        deactivateAll()
+        activate(id)
+    }
 }

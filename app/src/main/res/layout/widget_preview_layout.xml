@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  小部件在系统组件选择器里的预览图。
+  与 ScheduleWidgetContent 的样式保持一致：深色底 + 主题强调色 + 「上课中 / 下一节」标记。
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#1A1730"
+    android:background="#111827"
     android:orientation="vertical"
     android:padding="12dp">
 
-    <!-- 标题栏 -->
+    <!-- 标题栏：学期名 + 星期/周次/节数 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -16,7 +20,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="课程表"
+            android:text="我的课表"
             android:textColor="#FFFFFF"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -24,26 +28,26 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="周一 · 第1周"
+            android:text="周一 · 第1周 · 3节"
             android:textColor="#818CF8"
-            android:textSize="12sp" />
+            android:textSize="11sp" />
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
-        android:layout_height="8dp" />
+        android:layout_height="6dp" />
 
-    <!-- 课程卡片1 -->
+    <!-- 正在上的课：主题色底 + 「上课中」 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#30FFFFFF"
+        android:background="#596366F1"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:padding="8dp">
 
         <LinearLayout
-            android:layout_width="56dp"
+            android:layout_width="52dp"
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
@@ -51,14 +55,15 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="第1-2节"
-                android:textColor="#818CF8"
-                android:textSize="10sp" />
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="08:00-09:40"
-                android:textColor="#80FFFFFF"
+                android:textColor="#E6FFFFFF"
                 android:textSize="9sp" />
         </LinearLayout>
 
@@ -81,26 +86,34 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="教学楼A-301"
-                android:textColor="#B3FFFFFF"
-                android:textSize="11sp" />
+                android:textColor="#E6FFFFFF"
+                android:textSize="10sp" />
         </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="上课中"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="4dp" />
 
-    <!-- 课程卡片2 -->
+    <!-- 下一节：强调色标记 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#30FFFFFF"
+        android:background="#14FFFFFF"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:padding="8dp">
 
         <LinearLayout
-            android:layout_width="56dp"
+            android:layout_width="52dp"
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
@@ -109,13 +122,14 @@
                 android:layout_height="wrap_content"
                 android:text="第3-4节"
                 android:textColor="#818CF8"
-                android:textSize="10sp" />
+                android:textSize="10sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="10:00-11:40"
-                android:textColor="#80FFFFFF"
+                android:textColor="#B3FFFFFF"
                 android:textSize="9sp" />
         </LinearLayout>
 
@@ -139,7 +153,73 @@
                 android:layout_height="wrap_content"
                 android:text="外语楼B-201"
                 android:textColor="#B3FFFFFF"
-                android:textSize="11sp" />
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="下一节"
+            android:textColor="#818CF8"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="4dp" />
+
+    <!-- 之后的课：普通卡片 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#14FFFFFF"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="8dp">
+
+        <LinearLayout
+            android:layout_width="52dp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="第5-6节"
+                android:textColor="#818CF8"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="14:00-15:40"
+                android:textColor="#B3FFFFFF"
+                android:textSize="9sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingStart="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="大学物理"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="实验楼C-102"
+                android:textColor="#B3FFFFFF"
+                android:textSize="10sp" />
         </LinearLayout>
     </LinearLayout>
 

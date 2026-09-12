@@ -15,15 +15,17 @@ import kotlinx.coroutines.launch
     entities = [
         Semester::class,
         Course::class,
-        PeriodConfig::class
+        PeriodConfig::class,
+        ApiConfig::class
     ],
-    version = 3,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun semesterDao(): SemesterDao
     abstract fun courseDao(): CourseDao
     abstract fun periodConfigDao(): PeriodConfigDao
+    abstract fun apiConfigDao(): ApiConfigDao
 
     companion object {
         @Volatile
@@ -36,13 +38,6 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        /** v2 -> v3: 移除 API 配置功能，删除 api_configs 表 */
-        private val MIGRATION_2_3 = object : Migration(2, 3) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("DROP TABLE IF EXISTS api_configs")
-            }
-        }
-
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -50,7 +45,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "class_schedule_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2)
                     .addCallback(DatabaseCallback())
                     .fallbackToDestructiveMigration()
                     .build()

@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
-import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -16,6 +15,9 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,6 +31,12 @@ import androidx.compose.ui.unit.sp
 import com.classschedule.data.parser.ParsedOccurrence
 import com.classschedule.data.parser.SemesterJsonParser
 import com.classschedule.ui.components.*
+import com.classschedule.ui.glass.GlassDialog
+import com.classschedule.ui.glass.GlassDialogBody
+import com.classschedule.ui.glass.GlassDialogTitle
+import com.classschedule.ui.glass.GlassDropdownItem
+import com.classschedule.ui.glass.GlassDropdownMenu
+import com.classschedule.ui.components.bottomBarContentPadding
 import com.classschedule.ui.viewmodel.ImportMode
 import com.classschedule.ui.viewmodel.ImportState
 import com.classschedule.ui.viewmodel.MainViewModel
@@ -36,10 +44,7 @@ import com.classschedule.ui.viewmodel.WeeklyImport
 import com.classschedule.ui.viewmodel.getDayName
 import com.classschedule.ui.viewmodel.snapshotForWeek
 import com.classschedule.ui.viewmodel.weekFromFileName
-import java.nio.ByteBuffer
-import java.nio.charset.CharacterCodingException
-import java.nio.charset.Charset
-import java.nio.charset.CodingErrorAction
+import com.classschedule.util.FileTextReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,9 +54,11 @@ fun RecognitionScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit
 ) {
+    val activeApiConfig by viewModel.activeApiConfig.collectAsState()
     val importState by viewModel.importState.collectAsState()
     val importLogs by viewModel.importLogs.collectAsState()
     var jsonText by remember { mutableStateOf("") }
+    var useApi by remember { mutableStateOf(false) }
     var importMode by remember { mutableStateOf(ImportMode.WEEK_SNAPSHOT) }
     var targetWeek by remember { mutableIntStateOf(viewModel.currentWeek.value.coerceAtLeast(1)) }
     var showImportConfirm by remember { mutableStateOf(false) }
@@ -163,12 +170,12 @@ fun RecognitionScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
                 }
                 Text(text = "导入课表", color = MaterialTheme.colorScheme.onBackground, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
@@ -207,7 +214,7 @@ fun RecognitionScreen(
                         )
                     } else {
                         Text(
-                            text = "粘贴整学期课表（含各课程完整周次），一次清空当前课表并写入整个学期。",
+                            text = "粘贴整学期课表（含 data.AdjustDays 与各课程完整周次），一次清空当前课表并写入整个学期。",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp
                         )
@@ -319,9 +326,9 @@ fun RecognitionScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = if (importMode == ImportMode.WEEK_SNAPSHOT)
-                            "把教务系统里【第 $targetWeek 周】的课表 response 存成 .txt 用右上角导入；短文本也可直接粘贴到下面。"
+                            "把教务系统里【第 $targetWeek 周】的课表 response（含 data.AdjustDays）存成 .txt 用右上角导入；短文本也可直接粘贴到下面。"
                         else
-                            "把整学期课表 response 存成 .txt 用右上角导入；短文本也可直接粘贴到下面。",
+                            "把整学期课表 response（含 data.AdjustDays）存成 .txt 用右上角导入；短文本也可直接粘贴到下面。",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp
                     )
@@ -338,7 +345,7 @@ fun RecognitionScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(220.dp),
-                        placeholder = { Text("{ ... 粘贴教务课表 JSON ... }") },
+                        placeholder = { Text("{\n  \"data\": {\n    \"AdjustDays\": [...]\n  }\n}") },
                         textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
                         singleLine = false
                     )
@@ -358,11 +365,42 @@ fun RecognitionScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // 解析引擎选择
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(text = "解析方式", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        EngineButton(
+                            text = "本地解析（免费·离线）",
+                            selected = !useApi,
+                            modifier = Modifier.weight(1f)
+                        ) { useApi = false }
+                        EngineButton(
+                            text = "AI解析（默认API）",
+                            selected = useApi,
+                            enabled = activeApiConfig != null,
+                            modifier = Modifier.weight(1f)
+                        ) { useApi = true }
+                    }
+                    if (useApi && activeApiConfig == null) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "未配置API，请先到设置页添加并设为当前（也可直接用左侧本地解析）。",
+                            color = Color(0xFFF59E0B),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             GlassButton(
                 onClick = {
-                    viewModel.parseScheduleJson(jsonText)
+                    viewModel.parseScheduleJson(jsonText, viaApi = useApi)
                 },
-                text = "开始解析",
+                text = if (useApi) "开始AI解析" else "开始本地解析",
                 modifier = Modifier.fillMaxWidth(),
                 enabled = jsonText.isNotBlank() && importState !is ImportState.Loading
             )
@@ -481,7 +519,7 @@ fun RecognitionScreen(
     }
 
     if (showImportConfirm) {
-        AlertDialog(
+        GlassDialog(
             onDismissRequest = { showImportConfirm = false },
             title = { Text("确认导入") },
             text = {
@@ -508,7 +546,7 @@ fun RecognitionScreen(
         val weeks = batchItems.map { it.week }.distinct().sorted()
         val totalRows = batchItems.sumOf { it.occurrences.size }
         val totalCourses = batchItems.flatMap { it.occurrences }.map { it.name }.distinct().size
-        AlertDialog(
+        GlassDialog(
             onDismissRequest = { showBatchConfirm = false },
             title = { Text("确认批量导入") },
             text = {
@@ -607,6 +645,26 @@ private fun ModeButton(
     }
 }
 
+@Composable
+private fun EngineButton(
+    text: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val container = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+    val content = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content)
+    ) {
+        Text(text, fontSize = 13.sp)
+    }
+}
+
 /**
  * 第几周选择器：上一步/下一步 + 快速下拉跳到指定周
  */
@@ -624,7 +682,7 @@ private fun WeekStepSelector(
         horizontalArrangement = Arrangement.Center
     ) {
         IconButton(onClick = { onChange(week - 1) }) {
-            Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "上一周", tint = MaterialTheme.colorScheme.onSurface)
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "上一周", tint = MaterialTheme.colorScheme.onSurface)
         }
 
         Box {
@@ -641,10 +699,10 @@ private fun WeekStepSelector(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
                 )
             }
-            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            GlassDropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                 (1..maxWeek).forEach { w ->
-                    DropdownMenuItem(
-                        text = { Text("第 $w 周") },
+                    GlassDropdownItem(
+                        text = "第 $w 周",
                         onClick = { onChange(w); menuExpanded = false }
                     )
                 }
@@ -652,7 +710,7 @@ private fun WeekStepSelector(
         }
 
         IconButton(onClick = { onChange(week + 1) }) {
-            Icon(Icons.Default.KeyboardArrowRight, contentDescription = "下一周", tint = MaterialTheme.colorScheme.onSurface)
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "下一周", tint = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -661,37 +719,9 @@ private fun WeekStepSelector(
  * 读取 txt / 任意文本文件内容。
  * 优先按 UTF-8 严格解码；失败（如 Windows 记事本保存的 GBK）则回退 GB18030，再兜底 UTF-8。
  */
-private fun readTextFromUri(context: Context, uri: Uri): String {
-    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        ?: return ""
-    val start = if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() &&
-        bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()
-    ) 3 else 0 // 跳过 UTF-8 BOM
-    val body = bytes.copyOfRange(start, bytes.size)
-    val utf8Decoder = Charsets.UTF_8.newDecoder()
-        .onMalformedInput(CodingErrorAction.REPORT)
-        .onUnmappableCharacter(CodingErrorAction.REPORT)
-    return try {
-        utf8Decoder.decode(ByteBuffer.wrap(body)).toString()
-    } catch (e: CharacterCodingException) {
-        try {
-            Charset.forName("GB18030").decode(ByteBuffer.wrap(body)).toString()
-        } catch (e2: Exception) {
-            String(body, Charsets.UTF_8)
-        }
-    }
-}
+private fun readTextFromUri(context: Context, uri: Uri): String =
+    FileTextReader.readText(context, uri)
 
 /** 读取所选文件的显示名，用于提示已读取哪个文件 */
-private fun queryFileName(context: Context, uri: Uri): String {
-    var name: String? = null
-    context.contentResolver.query(
-        uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
-    )?.use { cursor ->
-        if (cursor.moveToFirst()) {
-            val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (idx >= 0) name = cursor.getString(idx)
-        }
-    }
-    return name ?: uri.lastPathSegment?.substringAfterLast('/') ?: uri.toString()
-}
+private fun queryFileName(context: Context, uri: Uri): String =
+    FileTextReader.queryFileName(context, uri)

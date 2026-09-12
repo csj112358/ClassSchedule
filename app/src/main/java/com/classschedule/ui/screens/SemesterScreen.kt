@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,6 +16,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.classschedule.data.model.Semester
 import com.classschedule.ui.components.*
+import com.classschedule.ui.glass.GlassDatePickerDialog
+import com.classschedule.ui.glass.GlassDialog
+import com.classschedule.ui.glass.GlassDialogBody
+import com.classschedule.ui.glass.GlassDialogTitle
 import com.classschedule.ui.viewmodel.MainViewModel
 import com.classschedule.ui.viewmodel.formatDate
 
@@ -38,7 +43,7 @@ fun SemesterScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
                 }
                 Text(text = "学期管理", color = MaterialTheme.colorScheme.onBackground, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
@@ -147,7 +152,7 @@ private fun SemesterItem(
     }
 
     if (showDeleteDialog) {
-        AlertDialog(
+        GlassDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("确认删除") },
             text = { Text("确定要删除学期「${semester.name}」吗？该学期下的所有课程也会被删除。") },
@@ -183,7 +188,7 @@ private fun AddSemesterDialog(
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    GlassDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
@@ -227,20 +232,18 @@ private fun AddSemesterDialog(
     )
 
     if (showStartDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = startDate)
-        DatePickerDialog(
+        GlassDatePickerDialog(
+            initialDateMillis = startDate,
             onDismissRequest = { showStartDatePicker = false },
-            confirmButton = { TextButton(onClick = { datePickerState.selectedDateMillis?.let { startDate = it }; showStartDatePicker = false }) { Text("确定") } },
-            dismissButton = { TextButton(onClick = { showStartDatePicker = false }) { Text("取消") } }
-        ) { DatePicker(state = datePickerState) }
+            onDateSelected = { startDate = it; showStartDatePicker = false }
+        )
     }
 
     if (showEndDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = endDate)
-        DatePickerDialog(
+        GlassDatePickerDialog(
+            initialDateMillis = endDate,
             onDismissRequest = { showEndDatePicker = false },
-            confirmButton = { TextButton(onClick = { datePickerState.selectedDateMillis?.let { endDate = it }; showEndDatePicker = false }) { Text("确定") } },
-            dismissButton = { TextButton(onClick = { showEndDatePicker = false }) { Text("取消") } }
-        ) { DatePicker(state = datePickerState) }
+            onDateSelected = { endDate = it; showEndDatePicker = false }
+        )
     }
 }

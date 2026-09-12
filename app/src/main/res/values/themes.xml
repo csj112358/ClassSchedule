@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+      系统栏交给 enableEdgeToEdge() 处理：透明 + edge-to-edge。
+      这里不再声明 windowTranslucentStatus/Navigation（API 30 起已废弃，在 Android 15+ 无效），
+      也不要在这里写 statusBarColor，否则会和 Compose 侧的主题底色打架。
+    -->
     <style name="Theme.ClassSchedule" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowTranslucentStatus">true</item>
-        <item name="android:windowTranslucentNavigation">true</item>
+        <item name="android:windowBackground">@android:color/black</item>
     </style>
 </resources>

@@ -63,6 +63,20 @@ data class PeriodConfig(
 )
 
 /**
+ * API配置实体
+ */
+@Entity(tableName = "api_configs")
+data class ApiConfig(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val name: String,           // 配置名称
+    val apiKey: String,         // API Key
+    val baseUrl: String,        // API基础URL
+    val modelName: String,      // 模型名称
+    val isActive: Boolean = false // 是否为当前使用的配置
+)
+
+/**
  * 课程颜色方案
  */
 data class CourseColor(

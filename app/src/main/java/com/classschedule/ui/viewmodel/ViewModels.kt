@@ -2,9 +2,14 @@ package com.classschedule.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.classschedule.data.api.*
 import com.classschedule.data.model.*
 import com.classschedule.data.parser.*
+import com.classschedule.data.prefs.SettingsStore
 import com.classschedule.data.repository.*
+import com.classschedule.data.share.PeriodSharing
+import com.classschedule.reminder.ReminderScheduler
+import com.classschedule.ui.theme.DEFAULT_THEME_NAME
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -13,6 +18,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
+import retrofit2.HttpException
 
 /**
  * 主ViewModel
@@ -21,12 +27,15 @@ import javax.inject.Inject
 class MainViewModel @Inject constructor(
     private val semesterRepository: SemesterRepository,
     private val courseRepository: CourseRepository,
-    private val periodConfigRepository: PeriodConfigRepository
+    private val periodConfigRepository: PeriodConfigRepository,
+    private val apiConfigRepository: ApiConfigRepository,
+    private val settingsStore: SettingsStore,
+    private val application: android.app.Application
 ) : ViewModel() {
 
-    // 当前选中的主题
-    private val _currentTheme = MutableStateFlow("蓝紫渐变")
-    val currentTheme: StateFlow<String> = _currentTheme.asStateFlow()
+    // 当前选中的主题（持久化在 DataStore，重启后保留）
+    val currentTheme: StateFlow<String> = settingsStore.themeName
+        .stateIn(viewModelScope, SharingStarted.Eagerly, DEFAULT_THEME_NAME)
 
     // 当前活跃学期
     val activeSemester: StateFlow<Semester?> = semesterRepository.getActiveSemester()
@@ -67,6 +76,51 @@ class MainViewModel @Inject constructor(
     val periodConfigs: StateFlow<List<PeriodConfig>> = periodConfigRepository.getAllPeriodConfigs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // API配置
+    val allApiConfigs: StateFlow<List<ApiConfig>> = apiConfigRepository.getAllApiConfigs()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val activeApiConfig: StateFlow<ApiConfig?> = apiConfigRepository.getActiveApiConfig()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    // ===== 上课提醒设置 =====
+
+    /** 提醒总开关（默认关闭） */
+    val reminderEnabled: StateFlow<Boolean> = settingsStore.reminderEnabled
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** 提前多少分钟提醒（默认 20） */
+    val reminderLeadMinutes: StateFlow<Int> = settingsStore.reminderLeadMinutes
+        .stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            SettingsStore.DEFAULT_LEAD_MINUTES
+        )
+
+    private fun rescheduleReminders() {
+        viewModelScope.launch { ReminderScheduler.reschedule(application) }
+    }
+
+    /**
+     * 打开或关闭上课提醒。
+     * 开关打开（或提前分钟变化）后立即重排下一次闹钟，不必等设置流自己传播。
+     */
+    fun setReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.setReminderEnabled(enabled)
+            ReminderScheduler.reschedule(application)
+        }
+    }
+
+    fun setReminderLeadMinutes(minutes: Int) {
+        viewModelScope.launch {
+            settingsStore.setReminderLeadMinutes(minutes)
+            if (settingsStore.isReminderEnabled()) {
+                ReminderScheduler.reschedule(application)
+            }
+        }
+    }
+
     // 导入状态
     private val _importState = MutableStateFlow<ImportState>(ImportState.Idle)
     val importState: StateFlow<ImportState> = _importState.asStateFlow()
@@ -84,6 +138,21 @@ class MainViewModel @Inject constructor(
 
     init {
         calculateCurrentWeek()
+
+        // 课表、学期或提醒开关变化时重排下一次提醒闹钟
+        viewModelScope.launch {
+            combine(
+                reminderEnabled,
+                reminderLeadMinutes,
+                allCourses,
+                activeSemester
+            ) { enabled, _, courses, semester -> Triple(enabled, courses, semester) }
+                .collect { (enabled, courses, semester) ->
+                    if (!enabled) return@collect
+                    if (semester == null && courses.isEmpty()) return@collect
+                    ReminderScheduler.reschedule(application)
+                }
+        }
     }
 
     /**
@@ -175,10 +244,10 @@ class MainViewModel @Inject constructor(
     }
 
     /**
-     * 切换主题
+     * 切换主题（写入 DataStore，重启后仍然生效）
      */
     fun setTheme(themeName: String) {
-        _currentTheme.value = themeName
+        viewModelScope.launch { settingsStore.setThemeName(themeName) }
     }
 
     // ===== 学期管理 =====
@@ -283,16 +352,114 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    // ===== 课表导入（粘贴教务JSON → 本地解析 → 预览 → 清空导入） =====
+    // ===== API配置 =====
 
-    /**
-     * 解析粘贴的课表 JSON 到课次预览。
-     * @param text 教务系统 response 原文
-     */
-    fun parseScheduleJson(text: String) {
+    fun addApiConfig(name: String, apiKey: String, baseUrl: String, modelName: String, setAsActive: Boolean) {
+        viewModelScope.launch {
+            val config = ApiConfig(
+                name = name,
+                apiKey = apiKey,
+                baseUrl = baseUrl,
+                modelName = modelName,
+                isActive = setAsActive
+            )
+            val id = apiConfigRepository.insert(config)
+            if (setAsActive) {
+                apiConfigRepository.setActiveConfig(id)
+            }
+        }
+    }
+
+    fun updateApiConfig(config: ApiConfig) {
+        viewModelScope.launch {
+            apiConfigRepository.update(config)
+        }
+    }
+
+    fun deleteApiConfig(config: ApiConfig) {
+        viewModelScope.launch {
+            apiConfigRepository.delete(config)
+        }
+    }
+
+    fun setActiveApiConfig(id: Long) {
+        viewModelScope.launch {
+            apiConfigRepository.setActiveConfig(id)
+        }
+    }
+
+    // ===== 课时时间分享 / 导入 =====
+
+    private val _periodImportState = MutableStateFlow<PeriodImportState>(PeriodImportState.Idle)
+    val periodImportState: StateFlow<PeriodImportState> = _periodImportState.asStateFlow()
+
+    /** 生成分享用的课时时间文本（按节次排序） */
+    suspend fun buildPeriodShareText(): String =
+        PeriodSharing.encode(periodConfigRepository.getAllPeriodConfigsList())
+
+    /** 当前课时时间文本（用于预览，数据来自已订阅的 Flow） */
+    fun currentPeriodShareText(): String =
+        PeriodSharing.encode(periodConfigs.value.sortedBy { it.period })
+
+    /** 解析分享文本；失败时把原因放进 [periodImportState] */
+    fun parsePeriodText(text: String, sourceLabel: String = "粘贴内容") {
         viewModelScope.launch {
             _importLogs.value = emptyList()
-            _importState.value = ImportState.Loading("正在解析...")
+            _periodImportState.value = PeriodImportState.Parsing
+            try {
+                if (text.isBlank()) {
+                    addLog("ERROR: 没有可解析的内容")
+                    _periodImportState.value = PeriodImportState.Error("请先选择文件或粘贴课时时间内容")
+                    return@launch
+                }
+                val result = withContext(Dispatchers.Default) { PeriodSharing.decode(text) }
+                result.warnings.forEach { addLog("提示: $it") }
+                addLog("解析完成: ${result.configs.size} 个节次（来源: $sourceLabel）")
+                _periodImportState.value = PeriodImportState.Parsed(
+                    configs = result.configs,
+                    warnings = result.warnings,
+                    sourceLabel = sourceLabel
+                )
+            } catch (e: Exception) {
+                addLog("ERROR: ${e.message}")
+                _periodImportState.value = PeriodImportState.Error(e.message ?: "解析失败")
+            }
+        }
+    }
+
+    /** 用解析出来的课时时间整份覆盖现有课时配置 */
+    fun applyParsedPeriods() {
+        val parsed = (_periodImportState.value as? PeriodImportState.Parsed) ?: return
+        viewModelScope.launch {
+            try {
+                periodConfigRepository.deleteAll()
+                periodConfigRepository.insertAll(parsed.configs)
+                addLog("已写入 ${parsed.configs.size} 个节次（整份覆盖）")
+                _periodImportState.value = PeriodImportState.Done(parsed.configs.size)
+                // 课时时间变了，提醒的“上课时刻”也随之改变，重排一次
+                ReminderScheduler.reschedule(application)
+            } catch (e: Exception) {
+                addLog("ERROR: ${e.message}")
+                _periodImportState.value = PeriodImportState.Error("写入失败：${e.message}")
+            }
+        }
+    }
+
+    fun resetPeriodImportState() {
+        _periodImportState.value = PeriodImportState.Idle
+    }
+
+    // ===== 课表导入（粘贴教务JSON → 本地/AI解析 → 预览 → 清空导入） =====
+
+    /**
+     * 解析粘贴的整学期课表 JSON 到课次预览
+     * @param text 教务系统 response 原文
+     * @param viaApi true=调用默认API(AI)解析; false=本地代码解析
+     */
+    fun parseScheduleJson(text: String, viaApi: Boolean) {
+        viewModelScope.launch {
+            _importLogs.value = emptyList()
+            _importState.value = ImportState.Loading(if (viaApi) "正在调用AI解析（默认API）..." else "正在本地解析...")
             try {
                 val trimmed = text.trim()
                 if (trimmed.isEmpty()) {
@@ -301,28 +468,88 @@ class MainViewModel @Inject constructor(
                     return@launch
                 }
 
-                addLog("开始解析...")
-                val result = withContext(Dispatchers.Default) { SemesterJsonParser.parse(trimmed) }
-                addLog("解析完成: ${result.occurrences.size} 条课次, ${result.distinctCourseCount} 门课程")
+                val outcome = if (viaApi) {
+                    parseWithApi(trimmed)
+                } else {
+                    addLog("开始本地解析...")
+                    val result = withContext(Dispatchers.Default) { SemesterJsonParser.parse(trimmed) }
+                    addLog("本地解析完成: ${result.occurrences.size} 条课次, ${result.distinctCourseCount} 门课程")
+                    result
+                }
 
-                if (result.occurrences.isEmpty()) {
+                if (outcome.occurrences.isEmpty()) {
                     addLog("ERROR: 未提取到课程")
                     _importState.value = ImportState.Error("没有解析出课程，请确认粘贴内容是否为完整课表JSON")
                     return@launch
                 }
 
-                addLog("覆盖周次范围: 第1周~第${result.maxWeek}周")
+                addLog("覆盖周次范围: 第1周~第${outcome.maxWeek}周")
                 _importState.value = ImportState.Success(
                     ImportPreview(
-                        occurrences = result.occurrences,
-                        sectionTimes = result.sectionTimes
+                        occurrences = outcome.occurrences,
+                        sectionTimes = outcome.sectionTimes,
+                        viaApi = viaApi
                     )
                 )
+            } catch (e: java.net.UnknownHostException) {
+                addLog("ERROR: 无法解析主机 ${e.message}")
+                _importState.value = ImportState.Error("无法连接服务器，请检查网络")
+            } catch (e: retrofit2.HttpException) {
+                addLog("ERROR: HTTP ${e.code()} ${e.message()}")
+                _importState.value = ImportState.Error("HTTP ${e.code()}，请查看日志")
             } catch (e: Exception) {
                 addLog("ERROR: ${e.javaClass.simpleName}: ${e.message}")
                 _importState.value = ImportState.Error(e.message ?: "解析失败")
             }
         }
+    }
+
+    /**
+     * 调用默认API（纯文本）解析课表 JSON
+     */
+    private suspend fun parseWithApi(rawJson: String): TimetableParseResult {
+        val apiConfig = activeApiConfig.value
+        if (apiConfig == null) {
+            addLog("ERROR: 未配置API")
+            throw IllegalStateException("请先在设置页面配置默认API")
+        }
+        addLog("API配置: ${apiConfig.baseUrl} | 模型: ${apiConfig.modelName}")
+
+        val api = KimiApiClient.createApi(apiConfig.baseUrl)
+        val request = KimiApiClient.buildTimetableParseRequest(rawJson, apiConfig.modelName)
+        addLog("发送请求到 ${apiConfig.baseUrl}v1/chat/completions ...")
+        val startTime = System.currentTimeMillis()
+        val response = api.chatCompletion("Bearer ${apiConfig.apiKey}", request)
+        val elapsed = (System.currentTimeMillis() - startTime) / 1000
+        addLog("响应收到, 耗时: ${elapsed}秒")
+
+        if (response.error != null) {
+            addLog("ERROR: API返回: ${response.error.message}")
+            throw IllegalStateException("API错误: ${response.error.message}")
+        }
+        val responseText = response.choices?.firstOrNull()?.message?.content
+        if (responseText.isNullOrBlank()) {
+            throw IllegalStateException("API返回内容为空，请重试")
+        }
+        addLog("响应长度: ${responseText.length} | 预览: ${responseText.take(160)}")
+
+        val occurrences = KimiApiClient.parseLlmOccurrences(responseText)
+        if (occurrences.isEmpty()) {
+            throw IllegalStateException("AI未能提取出课程，请查看日志或改用本地解析")
+        }
+        addLog("AI解析出 ${occurrences.size} 条课次")
+
+        // 节次时间尽量从原文本地提取，仅用于补齐课时配置
+        val sectionTimes = withContext(Dispatchers.Default) {
+            SemesterJsonParser.extractSectionTimes(rawJson)
+        }
+        val maxWeek = occurrences.maxOf { it.weekEnd }
+        return TimetableParseResult(
+            occurrences = occurrences,
+            sectionTimes = sectionTimes,
+            maxWeek = maxWeek,
+            distinctCourseCount = occurrences.map { it.name }.distinct().size
+        )
     }
 
     /**
@@ -520,11 +747,28 @@ sealed class ImportState {
 enum class ImportMode { WHOLE_SEMESTER, WEEK_SNAPSHOT }
 
 /**
+ * 课时时间导入状态
+ */
+sealed class PeriodImportState {
+    object Idle : PeriodImportState()
+    object Parsing : PeriodImportState()
+    data class Parsed(
+        val configs: List<PeriodConfig>,
+        val warnings: List<String> = emptyList(),
+        val sourceLabel: String = ""
+    ) : PeriodImportState()
+
+    data class Done(val count: Int) : PeriodImportState()
+    data class Error(val message: String) : PeriodImportState()
+}
+
+/**
  * 解析预览结果
  */
 data class ImportPreview(
     val occurrences: List<ParsedOccurrence>,
-    val sectionTimes: Map<Int, Pair<String, String>> = emptyMap()
+    val sectionTimes: Map<Int, Pair<String, String>> = emptyMap(),
+    val viaApi: Boolean = false
 )
 
 /**

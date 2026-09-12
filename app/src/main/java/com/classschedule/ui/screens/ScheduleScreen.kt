@@ -9,6 +9,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,12 +23,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.classschedule.data.model.*
-import com.classschedule.ui.components.AnimatedGradientBackground
 import com.classschedule.ui.components.GlassButton
 import com.classschedule.ui.components.GlassCard
+import com.classschedule.ui.components.GradientBackground
+import com.classschedule.ui.components.bottomBarContentPadding
+import com.classschedule.ui.glass.GlassDialog
+import com.classschedule.ui.glass.GlassDialogBody
+import com.classschedule.ui.glass.GlassDialogTitle
+import com.classschedule.ui.glass.GlassDropdownItem
+import com.classschedule.ui.glass.GlassDropdownMenu
 import com.classschedule.ui.viewmodel.MainViewModel
 import com.classschedule.ui.viewmodel.getDayName
 
@@ -43,11 +52,11 @@ fun ScheduleScreen(
     val periodConfigs by viewModel.periodConfigs.collectAsState()
     var infoCourse by remember { mutableStateOf<Course?>(null) }
 
-    AnimatedGradientBackground {
+    GradientBackground {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
+                .padding(start = 14.dp, end = 14.dp, top = 8.dp)
         ) {
             HeaderSection(
                 semester = activeSemester,
@@ -57,7 +66,7 @@ fun ScheduleScreen(
                 onWeekChange = { viewModel.setWeek(it) }
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             if (activeSemester == null) {
                 EmptySemesterHint(onNavigateToSettings = onNavigateToSettings)
@@ -67,7 +76,9 @@ fun ScheduleScreen(
                     periodConfigs = periodConfigs,
                     onShowInfo = { infoCourse = it },
                     onEditCourse = onEditCourse,
-                    getDateForDay = { dayOfWeek -> viewModel.getDateForWeekAndDay(currentWeek, dayOfWeek) }
+                    getDateForDay = { dayOfWeek -> viewModel.getDateForWeekAndDay(currentWeek, dayOfWeek) },
+                    // 列表底部留出悬浮导航条的空间，最后一行能滚上来
+                    contentPadding = bottomBarContentPadding
                 )
             }
         }
@@ -76,7 +87,9 @@ fun ScheduleScreen(
             FloatingActionButton(
                 onClick = onAddCourse,
                 modifier = Modifier
-                    .padding(16.dp)
+                    .padding(end = 18.dp)
+                    // 抬到悬浮导航条上方，避免压住底栏
+                    .padding(bottom = bottomBarContentPadding + 8.dp)
                     .align(Alignment.BottomEnd),
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
@@ -90,7 +103,7 @@ fun ScheduleScreen(
     }
 
     infoCourse?.let { course ->
-        AlertDialog(
+        GlassDialog(
             onDismissRequest = { infoCourse = null },
             title = { Text(course.name) },
             text = {
@@ -155,7 +168,7 @@ private fun HeaderSection(
                             if (currentWeek > 1) onWeekChange(currentWeek - 1)
                         }) {
                             Icon(
-                                Icons.Default.KeyboardArrowLeft,
+                                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                                 contentDescription = "上一周",
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
@@ -177,13 +190,13 @@ private fun HeaderSection(
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                                 )
                             }
-                            DropdownMenu(
+                            GlassDropdownMenu(
                                 expanded = weekMenuExpanded,
                                 onDismissRequest = { weekMenuExpanded = false }
                             ) {
                                 (1..maxWeek).forEach { w ->
-                                    DropdownMenuItem(
-                                        text = { Text("第 $w 周") },
+                                    GlassDropdownItem(
+                                        text = "第 $w 周",
                                         onClick = {
                                             onWeekChange(w)
                                             weekMenuExpanded = false
@@ -197,7 +210,7 @@ private fun HeaderSection(
                             if (currentWeek < maxWeek) onWeekChange(currentWeek + 1)
                         }) {
                             Icon(
-                                Icons.Default.KeyboardArrowRight,
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                 contentDescription = "下一周",
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
@@ -263,7 +276,8 @@ private fun ScheduleContent(
     periodConfigs: List<PeriodConfig>,
     onShowInfo: (Course) -> Unit,
     onEditCourse: (Long) -> Unit,
-    getDateForDay: (Int) -> Long? = { null }
+    getDateForDay: (Int) -> Long? = { null },
+    contentPadding: Dp = 0.dp
 ) {
     val sortedConfigs = periodConfigs.sortedBy { it.period }
     val cellHeight = 64.dp
@@ -271,7 +285,10 @@ private fun ScheduleContent(
 
     val sdf = remember { java.text.SimpleDateFormat("M/d", java.util.Locale.getDefault()) }
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = contentPadding)
+    ) {
         // 星期行头（含日期）
         item {
             Row(

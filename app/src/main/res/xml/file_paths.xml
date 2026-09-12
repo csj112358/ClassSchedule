@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 分享课时时间时，只暴露缓存目录下的 share/ 子目录 -->
+<paths>
+    <cache-path
+        name="share"
+        path="share/" />
+</paths>
